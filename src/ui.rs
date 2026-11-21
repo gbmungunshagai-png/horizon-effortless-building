@@ -22,18 +22,11 @@ fn icon(draw: &mut dyn DrawContext, (col, row): (u32, u32), x: f32, y: f32) {
     draw.sprite(ICONS, [col as f32 * 16.0, row as f32 * 16.0, 16.0, 16.0], [x, y, 16.0, 16.0], None);
 }
 
-/// Text in a named colour, as a legacy formatting code.
+/// Text in a named colour.
 fn styled(text: &str, color: &str) -> Text {
-    let code = match color {
-        "aqua" => 'b',
-        "gray" => '7',
-        "dark_gray" => '8',
-        "dark_purple" => '5',
-        "gold" => '6',
-        "red" => 'c',
-        _ => 'f',
-    };
-    Text::literal(format!("\u{a7}{code}{text}"))
+    let mut t = Text::literal(text);
+    t.style.color = Some(color.into());
+    t
 }
 
 /// Splits `text` into lines no wider than `width` characters (TooltipHelper.cutString).

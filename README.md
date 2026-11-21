@@ -2,6 +2,7 @@
 
 An unofficial port of [Effortless Building](https://github.com/Requios/effortless-building) by **Requios**
 (LGPL; ported from its `1.21` branch) to [Horizon](https://github.com/horizon-rust/horizon) as a native mod.
+It is **client-only**: install it in your game and use it on any server, which needs nothing installed.
 All credit for the design, the behaviour and the textures goes to Requios; bugs in this port are mine.
 
 ## What's ported
@@ -16,6 +17,20 @@ All credit for the design, the behaviour and the textures goes to Requios; bugs 
   planes drawn in the world.
 - **Undo / redo** (**Ctrl+Z / Ctrl+Y**, 50 steps), placement preview with the appear animation, block counts in
   the action bar, creative reach 200 and up to 10,000 blocks a click.
+
+## How blocks are set (client-only)
+
+The original places blocks with its own server code. This port has none, so it picks one of two ways when you
+first build in a world:
+
+- **Commands** where you may run `/setblock` (an op on the server, or single player with cheats on): any reach,
+  exact block states (mirrored and rotated ones included), replacing, and exact undo/redo. The command answers are
+  hidden from your chat. Other ops still see "[you: Changed the block at …]" unless the server turns admin feedback
+  off (`server.admin_feedback_to_ops=false` on a Horizon server).
+- **Clicks** everywhere else: the same packets a mouse click sends. The server applies vanilla's rules: only blocks
+  within normal reach (about 5 blocks) are set, they use your held item (survival uses items), the server picks each
+  block's facing, and blocks break only in creative. Blocks out of reach show red in the preview. Undo can remove
+  what you placed in creative but can't put back blocks you broke unless you hold that block.
 
 ## Not ported yet
 

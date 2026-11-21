@@ -1,17 +1,17 @@
 //! Effortless Building for Horizon: a port of Requios's Effortless Building (LGPL-3.0,
 //! https://github.com/Requios/effortless-building, branch 1.21). Build modes and their options,
 //! the radial menu, Mirror / Array / Radial Mirror modifiers, quick replace, undo and redo.
+//! Client-only: blocks are set with `/setblock` where the player may run it, else with vanilla clicks.
+mod apply;
 mod client;
 mod modes;
 mod modifiers;
-mod proto;
-mod server;
 mod ui;
 
 use mod_api::{
-    self, ClientHost, ClientTickPreEvent, Flow, GuiRenderPostEvent, Hooks, InteractionKeyMappingTriggeredEvent,
-    PayloadId, PlayerChangedDimensionEvent, PlayerLoggedOutEvent, RegistrationContext, Registrar, RenderLevelStage, RenderLevelStageEvent, ScreenKeyPressedPreEvent,
-    ScreenMouseButtonPressedPreEvent, ScreenMouseScrolledPreEvent, ScreenRenderPostEvent, ServerHost, ServerTickEvent,
+    self, ClientChatReceivedEvent, ClientHost, ClientLevelLoadEvent, ClientTickPreEvent, Flow, GuiRenderPostEvent,
+    Hooks, InteractionKeyMappingTriggeredEvent, RegistrationContext, Registrar, RenderLevelStage, RenderLevelStageEvent,
+    ScreenKeyPressedPreEvent, ScreenMouseButtonPressedPreEvent, ScreenMouseScrolledPreEvent, ScreenRenderPostEvent,
 };
 
 #[derive(Default)]
@@ -29,24 +29,17 @@ fn our_screen(host: &dyn ClientHost) -> Option<ui::Screen> {
 impl Hooks for Mod {
     fn register(&self, r: &mut dyn Registrar, _cx: &RegistrationContext) {
         client::register_keys(r);
-        let mut payloads = r.payload_handlers();
-        let mut view = payloads.registrar("2");
-        let place = view.play_to_server_typed::<proto::PlaceBlocks>(PayloadId("effortless:place_blocks".into()), server::handle_place);
-        let history = view.play_to_server_typed::<proto::History>(PayloadId("effortless:history".into()), server::handle_history);
-        let _ = proto::PLACE.set(place);
-        let _ = proto::HISTORY.set(history);
     }
 
-    fn player_logged_out(&self, host: &mut dyn ServerHost, event: &mut PlayerLoggedOutEvent<'_>) {
-        server::clear(host, event.player);
+    fn client_level_load(&self, _host: &mut dyn ClientHost, _event: &mut ClientLevelLoadEvent<'_>) {
+        apply::reset();
     }
 
-    fn player_changed_dimension(&self, host: &mut dyn ServerHost, event: &mut PlayerChangedDimensionEvent<'_>) {
-        server::clear(host, event.player);
-    }
-
-    fn server_tick(&self, host: &mut dyn ServerHost, event: &mut ServerTickEvent<'_>) {
-        server::tick(host, event);
+    fn client_chat_received(&self, _host: &mut dyn ClientHost, event: &mut ClientChatReceivedEvent<'_>) -> Flow {
+        if event.system && apply::on_chat(event.message) {
+            return Flow::Cancel;
+        }
+        Flow::Continue
     }
 
     fn client_tick_pre(&self, host: &mut dyn ClientHost, _event: &mut ClientTickPreEvent) {

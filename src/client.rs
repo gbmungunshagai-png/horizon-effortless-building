@@ -2,7 +2,7 @@
 //! `BuilderFilter`, `BlockPreviews` and `ModifierRenderer` (Requios, LGPL-3.0).
 use crate::modes::{self, Action, BuildMode, ModeOptions, Pos, Vec3};
 use crate::modifiers::{BlockSet, Entry, Modifier};
-use crate::proto::{History, PlaceBlocks, HISTORY, PLACE};
+use crate::apply::{self, Clicker, Method, Op};
 use crate::ui::{self, Screen};
 use mod_api::{
     BlockKey, BlockState, ClientHost, ClientModifiers, Flow, Hand, Hit, HostBlockStates, InteractionAttempt, InteractionKey,
@@ -524,15 +524,44 @@ pub fn tick(host: &mut dyn ClientHost) {
     builder_tick(host, &pv);
     mouse_input(host, &pv);
     previews_tick(&*host);
+
+    let now = STATE.lock().unwrap().ticks;
+    if let Some(note) = apply::tick(host, now, &clicker(&pv)) {
+        STATE.lock().unwrap().log(note);
+    }
+}
+
+/// What the clicks way needs: vanilla's block interaction range (creative 5, survival 4.5).
+fn clicker(pv: &PlayerView) -> Clicker {
+    Clicker { eye: pv.eye, reach: if pv.creative { 5.0 } else { 4.5 }, held_block: pv.held.map(|h| h.1) }
+}
+
+/// The block set as operations: each position, what stands there now, and its target.
+fn ops_for(host: &dyn ClientHost, pv: &PlayerView, st: &Client, breaking: bool) -> Vec<Op> {
+    let Some(level) = pv.player.level(host) else { return Vec::new() };
+    let Some(air) = host.block_state_id("minecraft:air") else { return Vec::new() };
+    // Disabled mode: vanilla places (or breaks) the first block itself.
+    let skip = if st.mode == BuildMode::Disabled { 1 } else { 0 };
+    st.blocks
+        .entries
+        .iter()
+        .zip(st.new_states.iter())
+        .skip(skip)
+        .filter_map(|(e, s)| {
+            let target = if breaking { air } else { (*s)? };
+            let old = level.block_state(host, e.pos)?;
+            (old != target).then_some(Op { pos: e.pos, old, target })
+        })
+        .collect()
 }
 
 /// `ModeOptions.performAction`.
 pub fn perform_action(host: &mut dyn ClientHost, action: Action) {
     match action {
         Action::Undo | Action::Redo => {
-            if let Some(token) = HISTORY.get() {
-                let _ = token.send(host, &History { redo: action == Action::Redo });
-            }
+            let now = STATE.lock().unwrap().ticks;
+            let level = host.local_player().and_then(|p| p.level(&*host));
+            apply::history(now, action == Action::Redo, |pos| level.and_then(|l| l.block_state(&*host, pos)));
             return;
         }
         _ => {}
@@ -703,6 +732,8 @@ fn builder_tick(host: &mut dyn ClientHost, pv: &PlayerView) {
             let face = face_of(&hit);
             let hit_y = hit.y - hit.block_y as f64;
             let mut used = 0u32;
+            let clicks = apply::method() == Method::Clicks;
+            let reach = clicker(pv);
             let have = if pv.creative { u32::MAX } else { pv.counts.get(&item).copied().unwrap_or(0) };
             let mut keep = Vec::new();
             for e in &st.blocks.entries {
@@ -715,7 +746,8 @@ fn builder_tick(host: &mut dyn ClientHost, pv: &PlayerView) {
                 keep.push(true);
                 used += 1;
                 st.new_states.push(new);
-                st.invalid.push(used > have);
+                // Without command permission the server only takes blocks within reach.
+                st.invalid.push(used > have || (clicks && !reach.in_reach(e.pos)));
             }
             let mut i = 0;
             st.blocks.retain(|_| {
@@ -876,7 +908,7 @@ fn mouse_input(host: &mut dyn ClientHost, pv: &PlayerView) {
 }
 
 fn on_right_click(host: &mut dyn ClientHost, pv: &PlayerView) {
-    let send = {
+    {
         let mut st = STATE.lock().unwrap();
         let st = &mut *st;
         if st.abilities != Abilities::CanPlaceAndBreak || st.building == Building::Breaking {
@@ -893,32 +925,15 @@ fn on_right_click(host: &mut dyn ClientHost, pv: &PlayerView) {
         if st.blocks.is_empty() {
             return;
         }
-        let mode = st.mode;
-        let delay = if st.blocks.len() > 1 { APPEAR_ANIMATION as i32 } else { 0 };
+        let delay = if st.blocks.len() > 1 { APPEAR_ANIMATION } else { 0 };
         on_blocks_sent(st, false);
-        let mut palette: Vec<String> = Vec::new();
-        let mut index: HashMap<BlockState, i32> = HashMap::new();
-        let mut blocks = Vec::with_capacity(st.blocks.len() * 4);
-        for (e, s) in st.blocks.entries.iter().zip(st.new_states.iter()) {
-            let Some(s) = s else { continue };
-            let i = *index.entry(*s).or_insert_with(|| {
-                palette.push(state_name(&*host, *s));
-                palette.len() as i32 - 1
-            });
-            blocks.extend_from_slice(&[e.pos[0], e.pos[1], e.pos[2], i]);
-        }
-        PlaceBlocks { breaking: false, delay, skip_first: mode == BuildMode::Disabled, palette, blocks }
-    };
-    if send.blocks.is_empty() {
-        return;
-    }
-    if let Some(token) = PLACE.get() {
-        let _ = token.send(host, &send);
+        let ops = ops_for(&*host, pv, st, false);
+        apply::submit(st.ticks, delay, ops);
     }
 }
 
 fn on_left_click(host: &mut dyn ClientHost, pv: &PlayerView) {
-    let send = {
+    {
         let mut st = STATE.lock().unwrap();
         let st = &mut *st;
         if st.abilities == Abilities::None || st.building == Building::Placing {
@@ -955,16 +970,9 @@ fn on_left_click(host: &mut dyn ClientHost, pv: &PlayerView) {
         if st.blocks.is_empty() {
             return;
         }
-        let mode = st.mode;
         on_blocks_sent(st, true);
-        let mut blocks = Vec::with_capacity(st.blocks.len() * 4);
-        for e in &st.blocks.entries {
-            blocks.extend_from_slice(&[e.pos[0], e.pos[1], e.pos[2], -1]);
-        }
-        PlaceBlocks { breaking: true, delay: 0, skip_first: mode == BuildMode::Disabled, palette: Vec::new(), blocks }
-    };
-    if let Some(token) = PLACE.get() {
-        let _ = token.send(host, &send);
+        let ops = ops_for(&*host, pv, st, true);
+        apply::submit(st.ticks, 0, ops);
     }
 }
 
