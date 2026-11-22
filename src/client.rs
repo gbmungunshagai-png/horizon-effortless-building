@@ -1,5 +1,5 @@
 //! Client side, after Effortless Building's `BuilderChain`, `BuildModes`, `ClientEvents`,
-//! `BuilderFilter`, `BlockPreviews` and `ModifierRenderer` (Requios, LGPL-3.0).
+//! `BuilderFilter`, `BlockPreviews` and `ModifierRenderer` (Requios, LGPL-2.1).
 use crate::modes::{self, Action, BuildMode, ModeOptions, Pos, Vec3};
 use crate::modifiers::{BlockSet, Entry, Modifier};
 use crate::apply::{self, Clicker, Method, Op};
@@ -561,7 +561,14 @@ pub fn perform_action(host: &mut dyn ClientHost, action: Action) {
         Action::Undo | Action::Redo => {
             let now = STATE.lock().unwrap().ticks;
             let level = host.local_player().and_then(|p| p.level(&*host));
-            apply::history(now, action == Action::Redo, |pos| level.and_then(|l| l.block_state(&*host, pos)));
+            let result = apply::history(now, action == Action::Redo, |pos| level.and_then(|l| l.block_state(&*host, pos)));
+            // A block someone (or something) changed since is left as it is: say so.
+            if let Some(r) = result.filter(|r| r.skipped > 0) {
+                let what = action.name();
+                let n = r.skipped;
+                let blocks = if n == 1 { "block" } else { "blocks" };
+                STATE.lock().unwrap().log(format!("{what}: {n} {blocks} changed since, left alone"));
+            }
             return;
         }
         _ => {}
@@ -782,6 +789,23 @@ fn builder_tick(host: &mut dyn ClientHost, pv: &PlayerView) {
 }
 
 /// TwoClicksBuildMode / ThreeClicksBuildMode.findCoordinates.
+/// The last shape worked out and what it was worked out from: a shape is only generated again
+/// when its points, mode, options or cap change, not every tick.
+type ShapeKey = (BuildMode, ModeOptions, usize, u8, Pos, Pos, Pos);
+static SHAPE_CACHE: Mutex<Option<(ShapeKey, Vec<Pos>)>> = Mutex::new(None);
+
+fn cached_shape(key: ShapeKey, make: impl FnOnce() -> Vec<Pos>) -> Vec<Pos> {
+    let mut cache = SHAPE_CACHE.lock().unwrap();
+    if let Some((k, list)) = cache.as_ref() {
+        if *k == key {
+            return list.clone();
+        }
+    }
+    let list = make();
+    *cache = Some((key, list.clone()));
+    list
+}
+
 fn find_coordinates(st: &mut Client, pv: &PlayerView) {
     let mode = st.mode;
     if st.clicks == 0 || mode.clicks() == 1 {
@@ -796,10 +820,11 @@ fn find_coordinates(st: &mut Client, pv: &PlayerView) {
         st.blocks.clear();
         st.blocks.first = Some(first);
         st.blocks.last = Some(second);
+        let (opts, cap) = (st.opts, st.at_once());
         if mode.clicks() == 2 {
-            mode.two_click_blocks(&st.opts, first, second_l)
+            cached_shape((mode, opts, cap, 2, first, second_l, second_l), || mode.two_click_blocks(&opts, cap, first, second_l))
         } else {
-            mode.intermediate_blocks(&st.opts, first, second_l)
+            cached_shape((mode, opts, cap, 1, first, second_l, second_l), || mode.intermediate_blocks(&opts, cap, first, second_l))
         }
     } else {
         let Some(second) = st.second else { return };
@@ -809,7 +834,10 @@ fn find_coordinates(st: &mut Client, pv: &PlayerView) {
         st.blocks.clear();
         st.blocks.first = Some(first);
         st.blocks.last = Some(third);
-        mode.final_blocks(&st.opts, limit, first, second_l, third_l)
+        let (opts, cap) = (st.opts, st.at_once());
+        cached_shape((mode, opts, cap, 3, first, second_l, third_l), || {
+            mode.final_blocks(&opts, limit, cap, first, second_l, third_l)
+        })
     };
     for p in list {
         st.blocks.add(Entry::new(p));

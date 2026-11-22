@@ -1,5 +1,5 @@
 //! Build modifiers: Mirror, Array and Radial Mirror, ported from Effortless Building's
-//! `buildmodifier` package (Requios, LGPL-3.0), and the ordered block set they work on.
+//! `buildmodifier` package (Requios, LGPL-2.1), and the ordered block set they work on.
 use crate::modes::{Pos, Vec3};
 use std::collections::HashSet;
 

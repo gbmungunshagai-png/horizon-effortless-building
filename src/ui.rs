@@ -1,6 +1,6 @@
 //! The two screens: the radial build-mode menu (`RadialMenu`, initially from Chisels and Bits)
 //! and Modifier Settings (`ModifiersScreen` and its entries), ported from Effortless Building
-//! (Requios, LGPL-3.0). Both are a mod screen over the world, drawn with the original's textures.
+//! (Requios, LGPL-2.1). Both are a mod screen over the world, drawn with the original's textures.
 use crate::client::{self, Client, Deferred, STATE};
 use crate::modes::{argbf, Action, BuildMode};
 use crate::modifiers::{Array, Mirror, Modifier, RadialMirror};

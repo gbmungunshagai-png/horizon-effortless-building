@@ -1,4 +1,4 @@
-//! Effortless Building for Horizon: a port of Requios's Effortless Building (LGPL-3.0,
+//! Effortless Building for Horizon: a port of Requios's Effortless Building (LGPL-2.1,
 //! https://github.com/Requios/effortless-building, branch 1.21). Build modes and their options,
 //! the radial menu, Mirror / Array / Radial Mirror modifiers, quick replace, undo and redo.
 //! Client-only: blocks are set with `/setblock` where the player may run it, else with vanilla clicks.

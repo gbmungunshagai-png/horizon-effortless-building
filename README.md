@@ -31,6 +31,11 @@ first build in a world:
   within normal reach (about 5 blocks) are set, they use your held item (survival uses items), the server picks each
   block's facing, and blocks break only in creative. Blocks out of reach show red in the preview. Undo can remove
   what you placed in creative but can't put back blocks you broke unless you hold that block.
+  Clicks go out at 2 blocks a tick (40 a second), like holding the mouse button, but placing many blocks without
+  looking at each one may still be flagged by anticheat plugins on some servers.
+
+Undo and redo only touch blocks that still look the way the build left them: a block someone else changed since (or
+one the server refused to set) is left alone, and the action bar says how many.
 
 ## Not ported yet
 

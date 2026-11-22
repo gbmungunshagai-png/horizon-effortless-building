@@ -1,6 +1,6 @@
 id = "effortless"
 name = "Effortless Building"
-version = "0.2.0"
+version = "0.2.1"
 description = "Port of Requios's Effortless Building: build modes, radial menu, mirror, array and radial mirror modifiers, quick replace, undo and redo."
 authors = ["Requios", "gbmungunshagai-png"]
 # A native mod: Rust in src/, compiled by the launcher against the game build [native] pins, beside data/ and assets/.

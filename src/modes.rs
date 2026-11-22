@@ -1,5 +1,5 @@
 //! Build modes, their options and their geometry: a port of Effortless Building's
-//! `buildmode` package (Requios, LGPL-3.0). Pure maths, no game calls.
+//! `buildmode` package (Requios, LGPL-2.1). Pure maths, no game calls.
 //!
 //! The second and third points of a shape are not the block under the crosshair: like the
 //! original, they come from where the look ray crosses a plane (or a line) through the first
@@ -568,27 +568,33 @@ pub fn line_blocks(p1: Pos, p2: Pos) -> Vec<Pos> {
     list
 }
 
-fn x_wall(list: &mut Vec<Pos>, x: i32, y1: i32, y2: i32, z1: i32, z2: i32) {
+fn x_wall(list: &mut Vec<Pos>, cap: usize, x: i32, y1: i32, y2: i32, z1: i32, z2: i32) {
     for z in span(z1, z2) {
+        if list.len() >= cap {
+            return;
+        }
         for y in span(y1, y2) {
             list.push([x, y, z]);
         }
     }
 }
-fn z_wall(list: &mut Vec<Pos>, x1: i32, x2: i32, y1: i32, y2: i32, z: i32) {
+fn z_wall(list: &mut Vec<Pos>, cap: usize, x1: i32, x2: i32, y1: i32, y2: i32, z: i32) {
     for x in span(x1, x2) {
+        if list.len() >= cap {
+            return;
+        }
         for y in span(y1, y2) {
             list.push([x, y, z]);
         }
     }
 }
 
-pub fn wall_blocks(opts: &ModeOptions, p1: Pos, p2: Pos) -> Vec<Pos> {
+pub fn wall_blocks(opts: &ModeOptions, cap: usize, p1: Pos, p2: Pos) -> Vec<Pos> {
     let mut list = Vec::new();
     let ([x1, y1, z1], [x2, y2, z2]) = (p1, p2);
     if x1 == x2 {
         if !opts.hollow {
-            x_wall(&mut list, x1, y1, y2, z1, z2);
+            x_wall(&mut list, cap, x1, y1, y2, z1, z2);
         } else {
             z_line(&mut list, z1, z2, x1, y1);
             z_line(&mut list, z1, z2, x1, y2);
@@ -596,7 +602,7 @@ pub fn wall_blocks(opts: &ModeOptions, p1: Pos, p2: Pos) -> Vec<Pos> {
             y_line(&mut list, y1, y2, x1, z2);
         }
     } else if !opts.hollow {
-        z_wall(&mut list, x1, x2, y1, y2, z1);
+        z_wall(&mut list, cap, x1, x2, y1, y2, z1);
     } else {
         x_line(&mut list, x1, x2, y1, z1);
         x_line(&mut list, x1, x2, y2, z1);
@@ -606,8 +612,11 @@ pub fn wall_blocks(opts: &ModeOptions, p1: Pos, p2: Pos) -> Vec<Pos> {
     list
 }
 
-fn floor_full(list: &mut Vec<Pos>, x1: i32, x2: i32, y: i32, z1: i32, z2: i32) {
+fn floor_full(list: &mut Vec<Pos>, cap: usize, x1: i32, x2: i32, y: i32, z1: i32, z2: i32) {
     for x in span(x1, x2) {
+        if list.len() >= cap {
+            return;
+        }
         for z in span(z1, z2) {
             list.push([x, y, z]);
         }
@@ -620,23 +629,26 @@ fn floor_hollow(list: &mut Vec<Pos>, x1: i32, x2: i32, y: i32, z1: i32, z2: i32)
     z_line(list, z1, z2, x2, y);
 }
 
-pub fn floor_blocks(hollow: bool, p1: Pos, p2: Pos) -> Vec<Pos> {
+pub fn floor_blocks(hollow: bool, cap: usize, p1: Pos, p2: Pos) -> Vec<Pos> {
     let mut list = Vec::new();
     if hollow {
         floor_hollow(&mut list, p1[0], p2[0], p1[1], p1[2], p2[2]);
     } else {
-        floor_full(&mut list, p1[0], p2[0], p1[1], p1[2], p2[2]);
+        floor_full(&mut list, cap, p1[0], p2[0], p1[1], p1[2], p2[2]);
     }
     list
 }
 
-pub fn cube_blocks(fill: CubeFill, p1: Pos, p3: Pos) -> Vec<Pos> {
+pub fn cube_blocks(fill: CubeFill, cap: usize, p1: Pos, p3: Pos) -> Vec<Pos> {
     let mut list = Vec::new();
     let ([x1, y1, z1], [x2, y2, z2]) = (p1, p3);
     match fill {
         CubeFill::Full => {
             for x in span(x1, x2) {
                 for z in span(z1, z2) {
+                    if list.len() >= cap {
+                        return list;
+                    }
                     for y in span(y1, y2) {
                         list.push([x, y, z]);
                     }
@@ -644,12 +656,12 @@ pub fn cube_blocks(fill: CubeFill, p1: Pos, p3: Pos) -> Vec<Pos> {
             }
         }
         CubeFill::Hollow => {
-            x_wall(&mut list, x1, y1, y2, z1, z2);
-            x_wall(&mut list, x2, y1, y2, z1, z2);
-            z_wall(&mut list, x1, x2, y1, y2, z1);
-            z_wall(&mut list, x1, x2, y1, y2, z2);
-            floor_full(&mut list, x1, x2, y1, z1, z2);
-            floor_full(&mut list, x1, x2, y2, z1, z2);
+            x_wall(&mut list, cap, x1, y1, y2, z1, z2);
+            x_wall(&mut list, cap, x2, y1, y2, z1, z2);
+            z_wall(&mut list, cap, x1, x2, y1, y2, z1);
+            z_wall(&mut list, cap, x1, x2, y1, y2, z2);
+            floor_full(&mut list, cap, x1, x2, y1, z1, z2);
+            floor_full(&mut list, cap, x1, x2, y2, z1, z2);
         }
         CubeFill::Skeleton => {
             x_line(&mut list, x1, x2, y1, z1);
@@ -693,11 +705,14 @@ pub fn diagonal_line_blocks(p1: Pos, p2: Pos, sample_multiplier: f64) -> Vec<Pos
     list
 }
 
-pub fn diagonal_wall_blocks(p1: Pos, p2: Pos, p3: Pos) -> Vec<Pos> {
+pub fn diagonal_wall_blocks(cap: usize, p1: Pos, p2: Pos, p3: Pos) -> Vec<Pos> {
     let line = diagonal_line_blocks(p1, p2, 1.0);
     let (lo, hi) = (p1[1].min(p3[1]), p1[1].max(p3[1]));
     let mut list = Vec::new();
     for y in lo..=hi {
+        if list.len() >= cap {
+            break;
+        }
         for b in &line {
             list.push([b[0], y, b[2]]);
         }
@@ -705,7 +720,7 @@ pub fn diagonal_wall_blocks(p1: Pos, p2: Pos, p3: Pos) -> Vec<Pos> {
     list
 }
 
-pub fn slope_floor_blocks(opts: &ModeOptions, axis_limit: i32, p1: Pos, p2: Pos, p3: Pos) -> Vec<Pos> {
+pub fn slope_floor_blocks(opts: &ModeOptions, axis_limit: i32, cap: usize, p1: Pos, p2: Pos, p3: Pos) -> Vec<Pos> {
     let ([x1, y1, z1], [x2, _, z2], [_, y3, _]) = (p1, p2, p3);
     let mut list = Vec::new();
     let x_len = (x2 - x1).abs();
@@ -719,6 +734,9 @@ pub fn slope_floor_blocks(opts: &ModeOptions, axis_limit: i32, p1: Pos, p2: Pos,
             hi = lo + axis_limit - 1;
         }
         for z in lo..=hi {
+            if list.len() >= cap {
+                break;
+            }
             for b in &line {
                 list.push([b[0], b[1], z]);
             }
@@ -731,6 +749,9 @@ pub fn slope_floor_blocks(opts: &ModeOptions, axis_limit: i32, p1: Pos, p2: Pos,
             hi = lo + axis_limit - 1;
         }
         for x in lo..=hi {
+            if list.len() >= cap {
+                break;
+            }
             for b in &line {
                 list.push([x, b[1], b[2]]);
             }
@@ -746,7 +767,7 @@ fn ellipse_radius(cx: f32, cz: f32, rx: f32, rz: f32, x: i32, z: i32) -> f32 {
     rx * rz / (part1 + part2).sqrt()
 }
 
-pub fn circle_blocks(opts: &ModeOptions, p1: Pos, p2: Pos) -> Vec<Pos> {
+pub fn circle_blocks(opts: &ModeOptions, cap: usize, p1: Pos, p2: Pos) -> Vec<Pos> {
     let ([mut x1, y1, mut z1], [x2, _, z2]) = (p1, p2);
     let (mut cx, mut cz) = (x1 as f32, z1 as f32);
     if !opts.circle_center {
@@ -760,8 +781,17 @@ pub fn circle_blocks(opts: &ModeOptions, p1: Pos, p2: Pos) -> Vec<Pos> {
     let rz = (z2 as f32 - cz).abs();
     let mut list = Vec::new();
     for x in span(x1, x2) {
+        if list.len() >= cap {
+            break;
+        }
         for z in span(z1, z2) {
-            let d = ((cx - x as f32).powi(2) + (cz - z as f32).powi(2)).sqrt();
+            // As in `sphere_blocks`: skip points surely outside (or, hollow, surely inside).
+            let d2 = (cx - x as f32).powi(2) + (cz - z as f32).powi(2);
+            let (r_max, r_min) = (rx.max(rz) + 0.41, rx.min(rz) - 0.61);
+            if d2 >= r_max * r_max || opts.hollow && r_min > 0.0 && d2 <= r_min * r_min {
+                continue;
+            }
+            let d = d2.sqrt();
             let r = ellipse_radius(cx, cz, rx, rz, x, z);
             let inside = d < r + 0.4;
             if inside && (!opts.hollow || d > r - 0.6) {
@@ -772,11 +802,14 @@ pub fn circle_blocks(opts: &ModeOptions, p1: Pos, p2: Pos) -> Vec<Pos> {
     list
 }
 
-pub fn cylinder_blocks(opts: &ModeOptions, p1: Pos, p2: Pos, p3: Pos) -> Vec<Pos> {
-    let circle = circle_blocks(opts, p1, p2);
+pub fn cylinder_blocks(opts: &ModeOptions, cap: usize, p1: Pos, p2: Pos, p3: Pos) -> Vec<Pos> {
+    let circle = circle_blocks(opts, cap, p1, p2);
     let (lo, hi) = (p1[1].min(p3[1]), p1[1].max(p3[1]));
     let mut list = Vec::new();
     for y in lo..=hi {
+        if list.len() >= cap {
+            break;
+        }
         for b in &circle {
             list.push([b[0], y, b[2]]);
         }
@@ -784,7 +817,7 @@ pub fn cylinder_blocks(opts: &ModeOptions, p1: Pos, p2: Pos, p3: Pos) -> Vec<Pos
     list
 }
 
-pub fn sphere_blocks(opts: &ModeOptions, p1: Pos, p2: Pos, p3: Pos) -> Vec<Pos> {
+pub fn sphere_blocks(opts: &ModeOptions, cap: usize, p1: Pos, p2: Pos, p3: Pos) -> Vec<Pos> {
     let ([mut x1, mut y1, mut z1], [x2, _, z2], [x3, y3, z3]) = (p1, p2, p3);
     let (mut cx, mut cy, mut cz) = (x1 as f32, y1 as f32, z1 as f32);
     if !opts.circle_center {
@@ -799,11 +832,27 @@ pub fn sphere_blocks(opts: &ModeOptions, p1: Pos, p2: Pos, p3: Pos) -> Vec<Pos> 
     let rx = (x2 as f32 - cx).abs();
     let ry = (y3 as f32 - cy).abs();
     let rz = (z2 as f32 - cz).abs();
+    // The radius in any direction lies between the smallest and the largest of the three, so a
+    // point farther than the largest (or, hollow, nearer than the smallest) is skipped without
+    // working its radius out; the margin covers rounding. Same blocks, far less work.
+    let r_max = rx.max(ry).max(rz) + 0.4 + 0.01;
+    let r_min = rx.min(ry).min(rz) - 0.6 - 0.01;
     let mut list = Vec::new();
     for x in span(x1, x3) {
         for z in span(z1, z3) {
+            if list.len() >= cap {
+                return list;
+            }
+            let dxz2 = (cx - x as f32).powi(2) + (cz - z as f32).powi(2);
+            if dxz2 >= r_max * r_max {
+                continue;
+            }
             for y in span(y1, y3) {
-                let d = ((cx - x as f32).powi(2) + (cy - y as f32).powi(2) + (cz - z as f32).powi(2)).sqrt();
+                let d2 = dxz2 + (cy - y as f32).powi(2);
+                if d2 >= r_max * r_max || opts.hollow && r_min > 0.0 && d2 <= r_min * r_min {
+                    continue;
+                }
+                let d = d2.sqrt();
                 let rxz = ellipse_radius(cx, cz, rx, rz, x, z);
                 let r = ellipse_radius(cx, cy, rxz, ry, x, y);
                 let inside = d < r + 0.4;
@@ -817,46 +866,68 @@ pub fn sphere_blocks(opts: &ModeOptions, p1: Pos, p2: Pos, p3: Pos) -> Vec<Pos> 
 }
 
 impl BuildMode {
-    /// Two-click modes: every block between the two points.
-    pub fn two_click_blocks(self, opts: &ModeOptions, p1: Pos, p2: Pos) -> Vec<Pos> {
-        match self {
+    /// Two-click modes: every block between the two points. Generation stops at about `cap`
+    /// blocks (the most placed at once), so a huge shape never costs more than that.
+    pub fn two_click_blocks(self, opts: &ModeOptions, cap: usize, p1: Pos, p2: Pos) -> Vec<Pos> {
+        let mut list = match self {
             BuildMode::Line => line_blocks(p1, p2),
-            BuildMode::Wall => wall_blocks(opts, p1, p2),
-            BuildMode::Floor => floor_blocks(opts.hollow, p1, p2),
-            BuildMode::Circle => circle_blocks(opts, p1, p2),
+            BuildMode::Wall => wall_blocks(opts, cap, p1, p2),
+            BuildMode::Floor => floor_blocks(opts.hollow, cap, p1, p2),
+            BuildMode::Circle => circle_blocks(opts, cap, p1, p2),
             _ => vec![p1],
-        }
+        };
+        list.truncate(cap);
+        list
     }
 
     /// Three-click modes after the first click: what the first two points show.
-    pub fn intermediate_blocks(self, opts: &ModeOptions, p1: Pos, p2: Pos) -> Vec<Pos> {
-        match self {
-            BuildMode::Cube => floor_blocks(opts.cube_fill == CubeFill::Skeleton, p1, p2),
+    pub fn intermediate_blocks(self, opts: &ModeOptions, cap: usize, p1: Pos, p2: Pos) -> Vec<Pos> {
+        let mut list = match self {
+            BuildMode::Cube => floor_blocks(opts.cube_fill == CubeFill::Skeleton, cap, p1, p2),
             BuildMode::DiagonalLine => diagonal_line_blocks(p1, p2, 10.0),
             BuildMode::DiagonalWall => diagonal_line_blocks(p1, p2, 1.0),
-            BuildMode::SlopeFloor => floor_blocks(opts.hollow, p1, p2),
-            BuildMode::Cylinder | BuildMode::Sphere => circle_blocks(opts, p1, p2),
+            BuildMode::SlopeFloor => floor_blocks(opts.hollow, cap, p1, p2),
+            BuildMode::Cylinder | BuildMode::Sphere => circle_blocks(opts, cap, p1, p2),
             _ => vec![p1],
-        }
+        };
+        list.truncate(cap);
+        list
     }
 
     /// Three-click modes: the finished shape.
-    pub fn final_blocks(self, opts: &ModeOptions, axis_limit: i32, p1: Pos, p2: Pos, p3: Pos) -> Vec<Pos> {
-        match self {
-            BuildMode::Cube => cube_blocks(opts.cube_fill, p1, p3),
+    pub fn final_blocks(self, opts: &ModeOptions, axis_limit: i32, cap: usize, p1: Pos, p2: Pos, p3: Pos) -> Vec<Pos> {
+        let mut list = match self {
+            BuildMode::Cube => cube_blocks(opts.cube_fill, cap, p1, p3),
             BuildMode::DiagonalLine => diagonal_line_blocks(p1, p3, 10.0),
-            BuildMode::DiagonalWall => diagonal_wall_blocks(p1, p2, p3),
-            BuildMode::SlopeFloor => slope_floor_blocks(opts, axis_limit, p1, p2, p3),
-            BuildMode::Cylinder => cylinder_blocks(opts, p1, p2, p3),
-            BuildMode::Sphere => sphere_blocks(opts, p1, p2, p3),
+            BuildMode::DiagonalWall => diagonal_wall_blocks(cap, p1, p2, p3),
+            BuildMode::SlopeFloor => slope_floor_blocks(opts, axis_limit, cap, p1, p2, p3),
+            BuildMode::Cylinder => cylinder_blocks(opts, cap, p1, p2, p3),
+            BuildMode::Sphere => sphere_blocks(opts, cap, p1, p2, p3),
             _ => vec![p1],
-        }
+        };
+        list.truncate(cap);
+        list
     }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    const M: usize = usize::MAX;
+
+    #[test]
+    fn huge_shapes_stop_at_the_cap() {
+        let o = ModeOptions::default();
+        let t = std::time::Instant::now();
+        assert_eq!(BuildMode::Cube.final_blocks(&o, 1000, 10_000, [0, 0, 0], [999, 0, 999], [999, 999, 999]).len(), 10_000);
+        assert_eq!(BuildMode::Sphere.final_blocks(&o, 1000, 10_000, [0, 0, 0], [999, 0, 999], [999, 999, 999]).len(), 10_000);
+        assert_eq!(BuildMode::Cylinder.final_blocks(&o, 1000, 10_000, [0, 0, 0], [999, 0, 999], [999, 999, 999]).len(), 10_000);
+        assert_eq!(BuildMode::Floor.two_click_blocks(&o, 10_000, [0, 0, 0], [999, 0, 999]).len(), 10_000);
+        let hollow = ModeOptions { hollow: true, ..o };
+        assert_eq!(BuildMode::Sphere.final_blocks(&hollow, 1000, 10_000, [0, 0, 0], [999, 0, 999], [999, 999, 999]).len(), 10_000);
+        assert!(t.elapsed().as_millis() < 500, "took {:?}", t.elapsed());
+    }
 
     fn set(v: &[Pos]) -> std::collections::BTreeSet<Pos> {
         v.iter().copied().collect()
@@ -904,12 +975,12 @@ mod tests {
     #[test]
     fn walls_and_cubes() {
         let o = ModeOptions::default();
-        assert_eq!(wall_blocks(&o, [0, 0, 0], [0, 2, 3]).len(), 12);
+        assert_eq!(wall_blocks(&o, M, [0, 0, 0], [0, 2, 3]).len(), 12);
         let hollow = ModeOptions { hollow: true, ..o };
-        assert_eq!(set(&wall_blocks(&hollow, [0, 0, 0], [0, 2, 3])).len(), 10);
-        assert_eq!(set(&cube_blocks(CubeFill::Full, [0, 0, 0], [2, 2, 2])).len(), 27);
-        assert_eq!(set(&cube_blocks(CubeFill::Hollow, [0, 0, 0], [2, 2, 2])).len(), 26);
-        assert_eq!(set(&cube_blocks(CubeFill::Skeleton, [0, 0, 0], [2, 2, 2])).len(), 20);
+        assert_eq!(set(&wall_blocks(&hollow, M, [0, 0, 0], [0, 2, 3])).len(), 10);
+        assert_eq!(set(&cube_blocks(CubeFill::Full, M, [0, 0, 0], [2, 2, 2])).len(), 27);
+        assert_eq!(set(&cube_blocks(CubeFill::Hollow, M, [0, 0, 0], [2, 2, 2])).len(), 26);
+        assert_eq!(set(&cube_blocks(CubeFill::Skeleton, M, [0, 0, 0], [2, 2, 2])).len(), 20);
     }
 
     #[test]
@@ -922,14 +993,14 @@ mod tests {
     #[test]
     fn circles() {
         let o = ModeOptions::default();
-        let c = set(&circle_blocks(&o, [0, 0, 0], [6, 0, 6]));
+        let c = set(&circle_blocks(&o, M, [0, 0, 0], [6, 0, 6]));
         assert!(c.contains(&[3, 0, 3]) && c.contains(&[0, 0, 3]) && !c.contains(&[0, 0, 0]));
         let hollow = ModeOptions { hollow: true, ..o };
-        assert!(!set(&circle_blocks(&hollow, [0, 0, 0], [6, 0, 6])).contains(&[3, 0, 3]));
+        assert!(!set(&circle_blocks(&hollow, M, [0, 0, 0], [6, 0, 6])).contains(&[3, 0, 3]));
         let centered = ModeOptions { circle_center: true, ..o };
-        let c = set(&circle_blocks(&centered, [0, 0, 0], [3, 0, 3]));
+        let c = set(&circle_blocks(&centered, M, [0, 0, 0], [3, 0, 3]));
         assert!(c.contains(&[-3, 0, 0]) && c.contains(&[3, 0, 0]));
-        let s = set(&sphere_blocks(&o, [0, 0, 0], [4, 0, 4], [4, 4, 4]));
+        let s = set(&sphere_blocks(&o, M, [0, 0, 0], [4, 0, 4], [4, 4, 4]));
         assert!(s.contains(&[2, 2, 2]) && !s.contains(&[0, 0, 0]));
     }
 
